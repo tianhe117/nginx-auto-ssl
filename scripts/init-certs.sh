@@ -67,7 +67,7 @@ for domain in "${DOMAIN_LIST[@]}"; do
         acme.sh --install-cert -d "${DOMAIN}" \
         --key-file       "/acme.sh/live/${DOMAIN}/privkey.pem" \
         --fullchain-file "/acme.sh/live/${DOMAIN}/fullchain.pem" \
-        --reloadcmd      "date +%s > /acme.sh/.nginx-reload"
+        --reloadcmd      "date +%s > /acme.sh/live/.nginx-reload"
     echo "  ✓ 证书已安装"
     echo ""
 done

@@ -1,7 +1,7 @@
 #!/bin/sh
 # -------------------------------------------------------------------
 # nginx-entrypoint.sh
-# 1. 后台启动 reload-watcher（监听证书 volume 中的 reload 信号文件）
+# 1. 后台启动 reload-watcher（监听证书目录中的 reload 信号文件）
 # 2. 等待证书文件出现（最多 5 分钟）
 # 3. 启动 nginx
 # -------------------------------------------------------------------
@@ -15,7 +15,7 @@ echo "[$(date)] reload-watcher started (pid=${WATCHER_PID})"
 # 等待至少一张证书存在
 echo "[$(date)] Waiting for certificates..."
 for i in $(seq 1 60); do
-  if ls /opt/nginx/certs/live/*/fullchain.pem >/dev/null 2>&1; then
+  if ls /opt/certs/*/fullchain.pem >/dev/null 2>&1; then
     echo "[$(date)] Certificates found, starting nginx"
     break
   fi

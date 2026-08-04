@@ -2,4 +2,4 @@
 .env
 
 # acme.sh 生成的证书和账号数据
-certs/
+acme.sh/

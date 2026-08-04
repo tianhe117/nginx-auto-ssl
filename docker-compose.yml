@@ -11,7 +11,7 @@ services:
       - ./conf.d:/etc/nginx/conf.d:ro
       - ./html:/usr/share/nginx/html:ro
       - ./scripts:/scripts:ro
-      - certs:/opt/nginx/certs:ro
+      - ./acme.sh/live:/opt/certs:ro
     logging:
       driver: json-file
       options:
@@ -30,12 +30,9 @@ services:
       - Ali_Key=${ALIYUN_AK_ID}
       - Ali_Secret=${ALIYUN_AK_SECRET}
     volumes:
-      - certs:/acme.sh
+      - ./acme.sh:/acme.sh
     logging:
       driver: json-file
       options:
         max-size: "10m"
         max-file: "3"
-
-volumes:
-  certs:

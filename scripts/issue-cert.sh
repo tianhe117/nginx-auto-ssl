@@ -35,7 +35,7 @@ docker compose exec -T acme-sh \
     acme.sh --install-cert -d "${DOMAIN}" \
     --key-file       "/acme.sh/live/${DOMAIN}/privkey.pem" \
     --fullchain-file "/acme.sh/live/${DOMAIN}/fullchain.pem" \
-    --reloadcmd      "date +%s > /acme.sh/.nginx-reload"
+    --reloadcmd      "date +%s > /acme.sh/live/.nginx-reload"
 
 echo ""
 echo "✓ 泛域名证书已签发: ${DOMAIN} + *.${DOMAIN}"
