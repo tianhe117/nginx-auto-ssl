@@ -1,0 +1,35 @@
+services:
+  nginx:
+    image: nginx:alpine
+    container_name: nginx
+    restart: unless-stopped
+    network_mode: host
+    environment:
+      - TZ=Asia/Shanghai
+    volumes:
+      - ./conf.d:/etc/nginx/conf.d:ro
+      - ./html:/usr/share/nginx/html:ro
+      - ./certs:/opt/nginx/certs:ro
+    logging:
+      driver: json-file
+      options:
+        max-size: "50m"
+        max-file: "5"
+    depends_on:
+      acme.sh:
+        condition: service_started
+
+  acme.sh:
+    image: neilpang/acme.sh:latest
+    container_name: acme.sh
+    restart: unless-stopped
+    network_mode: host
+    environment:
+      - TZ=Asia/Shanghai
+      - Ali_Key=${ALI_KEY}
+      - Ali_Secret=${ALI_SECRET}
+    volumes:
+      - ./acme.sh:/acme.sh
+      - ./certs:/output
+    command: daemon
+

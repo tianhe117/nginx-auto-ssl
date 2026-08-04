@@ -1,0 +1,21 @@
+# 密钥文件，不提交
+.env
+
+# 证书文件
+certs/*
+!certs/.gitkeep
+
+# nginx 配置
+conf.d/*
+!conf.d/.gitkeep
+
+# 静态文件
+html/*
+!html/.gitkeep
+
+# acme.sh 运行时数据（账号、证书副本等）
+acme.sh/*
+!acme.sh/.gitkeep
+
+# Claude 临时文件
+.claude/
