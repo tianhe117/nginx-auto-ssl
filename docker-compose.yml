@@ -4,49 +4,38 @@ services:
     container_name: nginx
     restart: unless-stopped
     network_mode: host
+    entrypoint: /scripts/nginx-entrypoint.sh
     environment:
       - TZ=Asia/Shanghai
     volumes:
       - ./conf.d:/etc/nginx/conf.d:ro
       - ./html:/usr/share/nginx/html:ro
+      - ./scripts:/scripts:ro
       - certs:/opt/nginx/certs:ro
     logging:
       driver: json-file
       options:
         max-size: "50m"
         max-file: "5"
-    depends_on:
-      acme-sh:
-        condition: service_healthy
 
   acme-sh:
-    image: neilpang/acme.sh:latest
+    image: ghcr.io/acmesh-official/acme.sh:latest
     container_name: acme-sh
     restart: unless-stopped
-    entrypoint: /scripts/entrypoint.sh
+    network_mode: host
+    command: daemon
+    stdin_open: true
+    tty: true
     environment:
       - Ali_Key=${ALIYUN_AK_ID}
       - Ali_Secret=${ALIYUN_AK_SECRET}
-      - DOMAINS=${DOMAINS}
-      - CERT_EMAIL=${CERT_EMAIL:-admin@example.com}
     volumes:
       - certs:/acme.sh
-      - ./scripts:/scripts:ro
-      # ⚠ docker.sock 用于 acme.sh 签发/续期后执行 `docker exec nginx nginx -s reload`
-      # 安全注意：挂载 socket 等于授予容器 Docker 宿主机 root 权限
-      # 替代方案：使用共享 signal-file volume + sidecar 监听 reload 信号
-      - /var/run/docker.sock:/var/run/docker.sock
     logging:
       driver: json-file
       options:
         max-size: "10m"
         max-file: "3"
-    healthcheck:
-      test: ["CMD", "test", "-f", "/acme.sh/.ready"]
-      interval: 2s
-      timeout: 5s
-      retries: 60
-      start_period: 1s
 
 volumes:
   certs:

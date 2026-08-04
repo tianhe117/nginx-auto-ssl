@@ -35,9 +35,10 @@ docker compose exec -T acme-sh \
     acme.sh --install-cert -d "${DOMAIN}" \
     --key-file       "/acme.sh/live/${DOMAIN}/privkey.pem" \
     --fullchain-file "/acme.sh/live/${DOMAIN}/fullchain.pem" \
-    --reloadcmd      "docker exec nginx nginx -s reload"
+    --reloadcmd      "date +%s > /acme.sh/.nginx-reload"
 
-echo "✓ 泛域名证书已签发: ${DOMAIN} + *.${DOMAIN}"
-echo "  nginx 证书路径: certs/live/${DOMAIN}/"
 echo ""
-echo "  别忘了在 conf.d/default.conf 中添加对应的 server 块！"
+echo "✓ 泛域名证书已签发: ${DOMAIN} + *.${DOMAIN}"
+echo "  nginx reload 信号已发送"
+echo ""
+echo "  别忘了在 conf.d/ 中添加对应的 server 块！"

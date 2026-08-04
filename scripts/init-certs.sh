@@ -1,43 +1,80 @@
 #!/bin/bash
+# -------------------------------------------------------------------
+# init-certs.sh — 初始化证书并启动全栈
+# 1. 启动 acme-sh daemon
+# 2. 逐域名签发/安装证书
+# 3. 启动 nginx
+# -------------------------------------------------------------------
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
-echo "→ 启动 nginx + acme.sh..."
-docker compose up -d
+if [ ! -f .env ]; then
+    echo "❌ 请先创建 .env 文件（参考 .env.example）"
+    exit 1
+fi
+set -a; source .env; set +a
 
-echo ""
-echo "→ 等待 acme.sh 完成证书初始化..."
-echo "  （首次签发需要 1-2 分钟，之后启动只需几秒）"
-echo ""
+: "${DOMAINS:?❌ DOMAINS 环境变量未设置}"
+: "${CERT_EMAIL:?❌ CERT_EMAIL 环境变量未设置}"
 
-# 等待 acme-sh healthy
-echo -n "  等待 acme-sh 就绪"
+# ---- Step 1: 启动 acme-sh daemon ----
+echo "→ 启动 acme-sh daemon..."
+docker compose up -d acme-sh
+
+echo "→ 等待 daemon 就绪..."
 READY=false
-for i in $(seq 1 90); do
-    if docker compose exec -T acme-sh test -f /acme.sh/.ready 2>/dev/null; then
-        echo " ✓"
+for i in $(seq 1 30); do
+    if docker compose exec -T acme-sh acme.sh --list >/dev/null 2>&1; then
+        echo "  ✓ acme-sh daemon 已就绪"
         READY=true
         break
     fi
     echo -n "."
     sleep 2
 done
+echo ""
 
 if ! $READY; then
-    echo ""
-    echo "============================================"
-    echo "❌ acme-sh 在 180 秒内未能就绪！"
-    echo ""
-    echo "  请检查 acme-sh 日志:"
-    echo "    docker compose logs acme-sh"
-    echo ""
-    echo "  常见原因:"
-    echo "    - Aliyun API 密钥错误"
-    echo "    - DNS 解析未生效"
-    echo "    - Let's Encrypt 速率限制"
-    echo "============================================"
+    echo "❌ acme-sh daemon 在 60 秒内未能就绪！"
+    echo "  请检查: docker compose logs acme-sh"
     exit 1
 fi
+
+# ---- Step 2: 为每个域名签发/安装证书 ----
+IFS=';' read -ra DOMAIN_LIST <<< "${DOMAINS}"
+
+for domain in "${DOMAIN_LIST[@]}"; do
+    DOMAIN="$(echo "${domain}" | xargs)"
+    [ -z "${DOMAIN}" ] && continue
+
+    echo "---- 处理: ${DOMAIN} + *.${DOMAIN} ----"
+
+    if docker compose exec -T acme-sh acme.sh --list 2>/dev/null | awk '{print $1}' | grep -Fxq "${DOMAIN}"; then
+        echo "  → acme.sh 中已有 ${DOMAIN} 的证书记录，跳过签发"
+    else
+        echo "  → 开始签发 ${DOMAIN} + *.${DOMAIN}（预计 1-2 分钟）..."
+        docker compose exec -T acme-sh \
+            acme.sh --issue --dns dns_ali \
+            --keylength ec-256 \
+            -d "${DOMAIN}" -d "*.${DOMAIN}" \
+            --email "${CERT_EMAIL}" \
+            --server letsencrypt
+        echo "  ✓ 签发成功"
+    fi
+
+    echo "  → 安装证书到 /acme.sh/live/${DOMAIN}/..."
+    docker compose exec -T acme-sh \
+        acme.sh --install-cert -d "${DOMAIN}" \
+        --key-file       "/acme.sh/live/${DOMAIN}/privkey.pem" \
+        --fullchain-file "/acme.sh/live/${DOMAIN}/fullchain.pem" \
+        --reloadcmd      "date +%s > /acme.sh/.nginx-reload"
+    echo "  ✓ 证书已安装"
+    echo ""
+done
+
+# ---- Step 3: 启动 nginx ----
+echo "→ 启动 nginx..."
+docker compose up -d nginx
 
 echo ""
 echo "============================================"
