@@ -11,11 +11,10 @@ docker compose exec -T acme-sh acme.sh --list 2>/dev/null || echo "暂无证书�
 
 echo ""
 echo "--- 证书文件检查 ---"
-for cert in ./certs/live/*/fullchain.pem 2>/dev/null; do
-    if [ -f "${cert}" ]; then
-        domain="$(basename "$(dirname "${cert}")")"
-        expiry="$(openssl x509 -enddate -noout -in "${cert}" 2>/dev/null | cut -d= -f2)"
-        echo "  ${domain}: 到期 ${expiry}"
-    fi
+# 通过 docker exec 检查容器内证书（certs 是 named volume，非 bind mount）
+for cert in $(docker compose exec -T acme-sh sh -c "ls /acme.sh/live/*/fullchain.pem 2>/dev/null"); do
+    domain="$(basename "$(dirname "${cert}")")"
+    expiry="$(docker compose exec -T acme-sh openssl x509 -enddate -noout -in "${cert}" 2>/dev/null | cut -d= -f2)"
+    echo "  ${domain}: 到期 ${expiry}"
 done
 echo "============================================"

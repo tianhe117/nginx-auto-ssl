@@ -32,6 +32,9 @@ services:
     volumes:
       - certs:/acme.sh
       - ./scripts:/scripts:ro
+      # ⚠ docker.sock 用于 acme.sh 签发/续期后执行 `docker exec nginx nginx -s reload`
+      # 安全注意：挂载 socket 等于授予容器 Docker 宿主机 root 权限
+      # 替代方案：使用共享 signal-file volume + sidecar 监听 reload 信号
       - /var/run/docker.sock:/var/run/docker.sock
     logging:
       driver: json-file

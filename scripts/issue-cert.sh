@@ -18,7 +18,7 @@ DOMAIN="${1:-}"
 if [ -z "${DOMAIN}" ]; then
     echo "用法: $0 <domain>"
     echo "示例: $0 liruixiang.cc"
-    echo "自动签发: ${DOMAIN} + *.${DOMAIN}"
+    echo "自动签发: <domain> + *.<domain>"
     exit 1
 fi
 

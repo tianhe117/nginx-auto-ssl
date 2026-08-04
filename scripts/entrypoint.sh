@@ -14,6 +14,9 @@ set -euo pipefail
 
 READY_FILE="/acme.sh/.ready"
 
+# 每次启动时清除旧的 .ready 标记，确保健康检查只在本次成功后才通过
+rm -f "${READY_FILE}"
+
 echo "============================================"
 echo "  acme.sh entrypoint 启动"
 echo "  DOMAINS: ${DOMAINS}"
@@ -32,12 +35,16 @@ for domain in "${DOMAIN_LIST[@]}"; do
     if [ ! -f "${CERT_DIR}/fullchain.pem" ] || [ ! -f "${CERT_DIR}/privkey.pem" ]; then
         echo "→ 生成自签名临时证书: ${DOMAIN}"
         mkdir -p "${CERT_DIR}"
-        openssl req -x509 -nodes -days 7 -newkey ec: \
+        if openssl req -x509 -nodes -days 7 -newkey ec: \
             -pkeyopt ec_paramgen_curve:prime256v1 \
             -keyout "${CERT_DIR}/privkey.pem" \
             -out   "${CERT_DIR}/fullchain.pem" \
-            -subj  "/CN=Temporary-${DOMAIN}" 2>/dev/null
-        echo "  ✓ 临时证书已生成"
+            -subj  "/CN=Temporary-${DOMAIN}" 2>/tmp/openssl.err; then
+            echo "  ✓ 临时证书已生成"
+        else
+            echo "  ✗ 自签名证书生成失败: ${DOMAIN}"
+            cat /tmp/openssl.err >&2
+        fi
     else
         echo "→ 证书文件已存在: ${DOMAIN}，跳过自签名"
     fi
@@ -52,28 +59,32 @@ for domain in "${DOMAIN_LIST[@]}"; do
     echo ""
     echo "---- 处理: ${DOMAIN} + *.${DOMAIN} ----"
 
-    if acme.sh --list 2>/dev/null | grep -q "${DOMAIN}"; then
+    # 精确匹配域名（以域名开头的行，避免 substring 误匹配 e.g. myapi.example.com vs api.example.com）
+    if acme.sh --list 2>/dev/null | awk '{print $1}' | grep -Fxq "${DOMAIN}"; then
         echo "  → acme.sh 中已有 ${DOMAIN} 的证书记录"
         echo "    （daemon 模式会在到期前自动续期）"
     else
         echo "  → 未找到 ${DOMAIN} 的证书，开始签发..."
         echo "    这可能需要 1-2 分钟..."
 
-        acme.sh --issue --dns dns_ali \
+        if acme.sh --issue --dns dns_ali \
             --keylength ec-256 \
             -d "${DOMAIN}" -d "*.${DOMAIN}" \
             --email "${CERT_EMAIL}" \
-            --server letsencrypt
-
-        echo "  ✓ ${DOMAIN} + *.${DOMAIN} 签发成功"
+            --server letsencrypt; then
+            echo "  ✓ ${DOMAIN} + *.${DOMAIN} 签发成功"
+        else
+            echo "  ✗ ${DOMAIN} 签发失败！请检查 DNS API 密钥和域名解析配置" >&2
+            continue
+        fi
     fi
 
-    # 安装证书 + reload 钩子
+    # 安装证书 + reload 钩子（失败时有错误输出）
     echo "  → 安装证书到 ${CERT_DIR}..."
     acme.sh --install-cert -d "${DOMAIN}" \
         --key-file       "${CERT_DIR}/privkey.pem" \
         --fullchain-file "${CERT_DIR}/fullchain.pem" \
-        --reloadcmd      "docker exec nginx nginx -s reload"
+        --reloadcmd      "docker exec nginx nginx -s reload || echo \"⚠ [$(date)] nginx reload 失败: ${DOMAIN}\" >&2"
     echo "  ✓ ${DOMAIN} 证书已安装"
 done
 
