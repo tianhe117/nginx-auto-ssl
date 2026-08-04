@@ -46,27 +46,105 @@ CERT_EMAIL=admin@example.com
 
 ### 3. 配置 Nginx
 
-编辑 `conf.d/default.conf`，将 `example1.com` / `example2.com` 替换为你的域名：
+在 `conf.d/` 目录下创建 `<your-domain>.conf`，参考下方模板：
+
+<details>
+<summary><b>点击展开 Nginx 配置模板</b></summary>
 
 ```nginx
+# ---- example1.com ----
 server {
     listen 80;
-    server_name your-domain.com www.your-domain.com;
+    server_name example1.com www.example1.com;
     return 301 https://$host$request_uri;
 }
 
 server {
     listen 443 ssl;
     http2 on;
-    server_name your-domain.com www.your-domain.com;
+    server_name example1.com www.example1.com;
 
-    ssl_certificate     /opt/nginx/certs/your-domain.com/fullchain.pem;
-    ssl_certificate_key /opt/nginx/certs/your-domain.com/privkey.pem;
-    ...
+    # 证书路径 — 目录名 = 根域名
+    ssl_certificate     /opt/nginx/certs/example1.com/fullchain.pem;
+    ssl_certificate_key /opt/nginx/certs/example1.com/privkey.pem;
+
+    ssl_protocols TLSv1.2 TLSv1.3;
+    ssl_ciphers ECDHE-ECDSA-AES128-GCM-SHA256:ECDHE-RSA-AES128-GCM-SHA256:ECDHE-ECDSA-AES256-GCM-SHA384:ECDHE-RSA-AES256-GCM-SHA384:ECDHE-ECDSA-CHACHA20-POLY1305:ECDHE-RSA-CHACHA20-POLY1305;
+    ssl_prefer_server_ciphers off;
+    ssl_stapling on;
+    ssl_stapling_verify on;
+    resolver 223.5.5.5 223.6.6.6 valid=300s;
+    resolver_timeout 5s;
+
+    root /usr/share/nginx/html;
+    index index.html;
+    location / { try_files $uri $uri/ =404; }
+}
+
+# ---- example2.com ----
+server {
+    listen 80;
+    server_name example2.com www.example2.com;
+    return 301 https://$host$request_uri;
+}
+
+server {
+    listen 443 ssl;
+    http2 on;
+    server_name example2.com www.example2.com;
+
+    ssl_certificate     /opt/nginx/certs/example2.com/fullchain.pem;
+    ssl_certificate_key /opt/nginx/certs/example2.com/privkey.pem;
+
+    ssl_protocols TLSv1.2 TLSv1.3;
+    ssl_ciphers ECDHE-ECDSA-AES128-GCM-SHA256:ECDHE-RSA-AES128-GCM-SHA256:ECDHE-ECDSA-AES256-GCM-SHA384:ECDHE-RSA-AES256-GCM-SHA384:ECDHE-ECDSA-CHACHA20-POLY1305:ECDHE-RSA-CHACHA20-POLY1305;
+    ssl_prefer_server_ciphers off;
+    ssl_stapling on;
+    ssl_stapling_verify on;
+    resolver 223.5.5.5 223.6.6.6 valid=300s;
+    resolver_timeout 5s;
+
+    root /usr/share/nginx/html;
+    index index.html;
+    location / { try_files $uri $uri/ =404; }
 }
 ```
 
-### 4. 启动
+</details>
+
+### 4. 添加首页（可选）
+
+在 `html/` 目录下放入你的静态文件。以下是一个测试页面：
+
+<details>
+<summary><b>点击展开 index.html 模板</b></summary>
+
+```html
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>It Works!</title>
+  <style>
+    body { font-family: system-ui, sans-serif; display: flex; justify-content: center; align-items: center; min-height: 100vh; margin: 0; background: #f5f5f5; }
+    .card { background: #fff; padding: 2rem 3rem; border-radius: 12px; box-shadow: 0 2px 12px rgba(0,0,0,0.08); text-align: center; }
+    h1 { color: #2c3e50; margin-bottom: 0.5rem; }
+    p { color: #7f8c8d; }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <h1>🚀 Nginx + acme.sh is running!</h1>
+    <p>TLS certificates managed automatically via Aliyun DNS challenge.</p>
+  </div>
+</body>
+</html>
+```
+
+</details>
+
+### 5. 启动
 
 ```bash
 docker compose up -d
@@ -80,7 +158,7 @@ docker compose up -d
 
 整个过程约 1-2 分钟。
 
-### 5. 验证
+### 6. 验证
 
 ```bash
 curl -k https://localhost -H 'Host: your-domain.com'
@@ -95,10 +173,8 @@ nginx-auto-ssl/
 ├── .env.example          # 环境变量模板
 ├── .gitignore            # 忽略 .env 和 certs/
 ├── docker-compose.yml    # nginx + acme-sh 双容器编排
-├── conf.d/
-│   └── default.conf      # Nginx HTTPS 配置
-├── html/
-│   └── index.html        # 默认首页
+├── conf.d/               # 在此放入你的 Nginx 配置
+├── html/                 # 在此放入你的静态文件
 └── scripts/
     ├── entrypoint.sh     # acme-sh 容器入口脚本
     ├── issue-cert.sh     # 手动签发额外证书
