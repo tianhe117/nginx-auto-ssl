@@ -1,0 +1,49 @@
+services:
+  nginx:
+    image: nginx:alpine
+    container_name: nginx
+    restart: unless-stopped
+    network_mode: host
+    environment:
+      - TZ=Asia/Shanghai
+    volumes:
+      - ./conf.d:/etc/nginx/conf.d:ro
+      - ./html:/usr/share/nginx/html:ro
+      - certs:/opt/nginx/certs:ro
+    logging:
+      driver: json-file
+      options:
+        max-size: "50m"
+        max-file: "5"
+    depends_on:
+      acme-sh:
+        condition: service_healthy
+
+  acme-sh:
+    image: neilpang/acme.sh:latest
+    container_name: acme-sh
+    restart: unless-stopped
+    entrypoint: /scripts/entrypoint.sh
+    environment:
+      - Ali_Key=${ALIYUN_AK_ID}
+      - Ali_Secret=${ALIYUN_AK_SECRET}
+      - DOMAINS=${DOMAINS}
+      - CERT_EMAIL=${CERT_EMAIL:-admin@example.com}
+    volumes:
+      - certs:/acme.sh
+      - ./scripts:/scripts:ro
+      - /var/run/docker.sock:/var/run/docker.sock
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+    healthcheck:
+      test: ["CMD", "test", "-f", "/acme.sh/.ready"]
+      interval: 2s
+      timeout: 5s
+      retries: 60
+      start_period: 1s
+
+volumes:
+  certs:
