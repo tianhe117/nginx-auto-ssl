@@ -1,38 +1,39 @@
 # nginx-auto-ssl
 
-基于 Docker Compose 的 Nginx + acme.sh 自动证书管理方案。启动时自动签发 Let's Encrypt 泛域名证书，之后每天自动检查续期，无需人工干预。
+Nginx + acme.sh 容器化方案，一键签发和自动续期 Let's Encrypt 泛域名证书。
 
 ## 特性
 
-- 🚀 **一键启动** — `docker compose up -d` 即可，无需额外初始化
-- 🔒 **泛域名证书** — 自动签发 `domain` + `*.domain`，一个证书覆盖所有子域名
-- 🌐 **多域名支持** — 分号分隔即可，每个域名独立证书、独立续期
-- 🔄 **全自动续期** — acme.sh daemon 每天检查，到期自动续签并 reload nginx
-- 🛡️ **DNS 验证** — 通过阿里云 DNS API 完成 DNS-01 验证，无需开放 80 端口
-- 📦 **零依赖** — 只需要 Docker
+- 🚀 **一键初始化** — `./scripts/init-certs.sh` 启动 daemon、签发证书、拉起 nginx
+- 🔒 **泛域名证书** — 每个根域名签发 `domain` + `*.domain`（SAN 证书）
+- 🌐 **多域名** — 分号分隔，每个域名独立证书、独立续期
+- 🔄 **全自动续期** — acme.sh daemon 每日检查，到期自动续签并信号触发 nginx reload
+- 🛡️ **DNS 验证** — 阿里云 DNS API 完成 DNS-01 challenge，无需开放 80/443 端口
+- 🔌 **无 docker.sock** — 通过共享 bind mount 信号文件实现 reload，无安全风险
+- 🖥️ **主机可见** — 证书文件 bind mount 到 `./acme.sh/live/`，可直接查看
 
 ## 前置条件
 
-1. Docker 和 Docker Compose
-2. 域名托管在阿里云 DNS
-3. 阿里云 AccessKey（需要有 DNS 管理权限）
+- Docker + Docker Compose
+- 域名托管在阿里云 DNS
+- 阿里云 RAM AccessKey（需 DNS 管理权限）
 
 ## 快速开始
 
-### 1. 克隆仓库
+### 1. 克隆
 
 ```bash
-git clone git@github.com:tianhe117/nginx-auto-ssl.git
+git clone https://github.com/tianhe117/nginx-auto-ssl.git
 cd nginx-auto-ssl
 ```
 
-### 2. 配置环境变量
+### 2. 配置
 
 ```bash
 cp .env.example .env
 ```
 
-编辑 `.env`，填入你的阿里云密钥和域名：
+编辑 `.env`：
 
 ```env
 ALIYUN_AK_ID=your_aliyun_access_key_id
@@ -41,18 +42,19 @@ DOMAINS=example1.com;example2.com
 CERT_EMAIL=admin@example.com
 ```
 
-- **DOMAINS** — 分号分隔的根域名列表，每个会自动签发 `domain + *.domain`
-- **CERT_EMAIL** — Let's Encrypt 证书到期通知邮箱
+| 变量 | 说明 |
+|------|------|
+| `ALIYUN_AK_ID` | 阿里云 AccessKey ID |
+| `ALIYUN_AK_SECRET` | 阿里云 AccessKey Secret |
+| `DOMAINS` | 分号分隔的根域名列表 |
+| `CERT_EMAIL` | Let's Encrypt 通知邮箱 |
 
-### 3. 配置 Nginx
+### 3. 添加 Nginx 配置
 
-在 `conf.d/` 目录下创建 `<your-domain>.conf`，参考下方模板：
-
-<details>
-<summary><b>点击展开 Nginx 配置模板</b></summary>
+在 `conf.d/` 下创建 `<domain>.conf`，证书路径为 `/opt/certs/<domain>/`：
 
 ```nginx
-# ---- example1.com ----
+# example1.com
 server {
     listen 80;
     server_name example1.com www.example1.com;
@@ -64,45 +66,12 @@ server {
     http2 on;
     server_name example1.com www.example1.com;
 
-    # 证书路径 — 目录名 = 根域名
-    ssl_certificate     /opt/nginx/certs/example1.com/fullchain.pem;
-    ssl_certificate_key /opt/nginx/certs/example1.com/privkey.pem;
+    ssl_certificate     /opt/certs/example1.com/fullchain.pem;
+    ssl_certificate_key /opt/certs/example1.com/privkey.pem;
 
     ssl_protocols TLSv1.2 TLSv1.3;
     ssl_ciphers ECDHE-ECDSA-AES128-GCM-SHA256:ECDHE-RSA-AES128-GCM-SHA256:ECDHE-ECDSA-AES256-GCM-SHA384:ECDHE-RSA-AES256-GCM-SHA384:ECDHE-ECDSA-CHACHA20-POLY1305:ECDHE-RSA-CHACHA20-POLY1305;
     ssl_prefer_server_ciphers off;
-    ssl_stapling on;
-    ssl_stapling_verify on;
-    resolver 223.5.5.5 223.6.6.6 valid=300s;
-    resolver_timeout 5s;
-
-    root /usr/share/nginx/html;
-    index index.html;
-    location / { try_files $uri $uri/ =404; }
-}
-
-# ---- example2.com ----
-server {
-    listen 80;
-    server_name example2.com www.example2.com;
-    return 301 https://$host$request_uri;
-}
-
-server {
-    listen 443 ssl;
-    http2 on;
-    server_name example2.com www.example2.com;
-
-    ssl_certificate     /opt/nginx/certs/example2.com/fullchain.pem;
-    ssl_certificate_key /opt/nginx/certs/example2.com/privkey.pem;
-
-    ssl_protocols TLSv1.2 TLSv1.3;
-    ssl_ciphers ECDHE-ECDSA-AES128-GCM-SHA256:ECDHE-RSA-AES128-GCM-SHA256:ECDHE-ECDSA-AES256-GCM-SHA384:ECDHE-RSA-AES256-GCM-SHA384:ECDHE-ECDSA-CHACHA20-POLY1305:ECDHE-RSA-CHACHA20-POLY1305;
-    ssl_prefer_server_ciphers off;
-    ssl_stapling on;
-    ssl_stapling_verify on;
-    resolver 223.5.5.5 223.6.6.6 valid=300s;
-    resolver_timeout 5s;
 
     root /usr/share/nginx/html;
     index index.html;
@@ -110,107 +79,134 @@ server {
 }
 ```
 
-</details>
+> **路径规则**：`/opt/certs/<根域名>/fullchain.pem`，目录名必须和 `.env` 中的域名完全一致。
 
-### 4. 添加首页（可选）
-
-在 `html/` 目录下放入你的静态文件。以下是一个测试页面：
-
-<details>
-<summary><b>点击展开 index.html 模板</b></summary>
-
-```html
-<!DOCTYPE html>
-<html lang="zh-CN">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>It Works!</title>
-  <style>
-    body { font-family: system-ui, sans-serif; display: flex; justify-content: center; align-items: center; min-height: 100vh; margin: 0; background: #f5f5f5; }
-    .card { background: #fff; padding: 2rem 3rem; border-radius: 12px; box-shadow: 0 2px 12px rgba(0,0,0,0.08); text-align: center; }
-    h1 { color: #2c3e50; margin-bottom: 0.5rem; }
-    p { color: #7f8c8d; }
-  </style>
-</head>
-<body>
-  <div class="card">
-    <h1>🚀 Nginx + acme.sh is running!</h1>
-    <p>TLS certificates managed automatically via Aliyun DNS challenge.</p>
-  </div>
-</body>
-</html>
-```
-
-</details>
-
-### 5. 启动
+### 4. 启动
 
 ```bash
-docker compose up -d
+./scripts/init-certs.sh
 ```
 
-首次启动时，acme-sh 容器会：
-1. 生成自签名临时证书（让 nginx 先起来）
-2. 通过阿里云 DNS 验证签发 Let's Encrypt 证书
-3. 安装证书并写入 `.ready` 标记
-4. nginx 检测到标记后启动，加载真实证书
+首次运行流程：
+1. 启动 acme-sh daemon 容器
+2. 通过 `docker compose exec` 逐域名签发 Let's Encrypt 证书
+3. 安装证书并写入 reload 信号
+4. 启动 nginx 容器，等待证书就绪后开始服务
 
 整个过程约 1-2 分钟。
 
-### 6. 验证
+### 5. 验证
 
 ```bash
 curl -k https://localhost -H 'Host: your-domain.com'
+# 或浏览器访问 https://your-domain.com
 ```
-
-访问 `https://your-domain.com` 确认证书生效。
 
 ## 目录结构
 
 ```
 nginx-auto-ssl/
-├── .env.example          # 环境变量模板
-├── .gitignore            # 忽略 .env 和 certs/
-├── docker-compose.yml    # nginx + acme-sh 双容器编排
-├── conf.d/               # 在此放入你的 Nginx 配置
-├── html/                 # 在此放入你的静态文件
+├── .env.example              # 环境变量模板
+├── .gitignore                # 忽略 .env 和 acme.sh/
+├── docker-compose.yml        # nginx + acme-sh 双容器
+├── conf.d/                   # Nginx server 配置
+├── html/                     # 静态文件
+├── acme.sh/                  # acme.sh 数据（bind mount，自动生成）
+│   └── live/                 #   已签发证书 → nginx 只读挂载
+│       ├── example1.com/
+│       │   ├── fullchain.pem
+│       │   └── privkey.pem
+│       └── .nginx-reload     #   reload 信号文件
 └── scripts/
-    ├── entrypoint.sh     # acme-sh 容器入口脚本
-    ├── issue-cert.sh     # 手动签发额外证书
-    └── cert-status.sh    # 查看证书到期时间
+    ├── init-certs.sh         # 首次初始化：启动 daemon → 签发证书 → 启动 nginx
+    ├── nginx-entrypoint.sh   # nginx 容器入口：等待证书 → 启动 reload-watcher → 启动 nginx
+    ├── reload-watch.sh       # 轮询 .nginx-reload 信号 → nginx -s reload
+    ├── issue-cert.sh         # 为额外域名签发证书
+    └── cert-status.sh        # 查看证书到期时间
 ```
+
+## 架构
+
+```
+                    ┌──────────────────────────────────┐
+                    │        ./acme.sh/  (bind mount)   │
+                    │  ┌─ account/ ca/ ...              │
+                    │  ├─ live/                         │
+                    │  │   ├─ example.com/              │
+                    │  │   │   ├─ fullchain.pem         │
+                    │  │   │   └─ privkey.pem           │
+                    │  │   └─ .nginx-reload             │
+                    │  └─ ...                           │
+                    └───────┬──────────────┬────────────┘
+                            │ rw           │ ro
+                    ┌───────▼──────┐ ┌─────▼──────────┐
+                    │  acme-sh     │ │  nginx         │
+                    │  (daemon)    │ │                │
+                    │  /acme.sh    │ │  /opt/certs    │
+                    │              │ │       │        │
+                    │  cron:       │ │  reload-watch  │
+                    │  每日检查续期  │ │  检测信号文件   │
+                    │  续期 → 写入  │ │  → nginx -s    │
+                    │  .nginx-     │ │    reload      │
+                    │  reload      │ │                │
+                    └──────────────┘ └────────────────┘
+```
+
+- **证书续期**：acme.sh daemon 内置 cron 每日检查，到期 < 60 天时自动续签
+- **热加载**：续签后 `--reloadcmd` 写入时间戳到 `live/.nginx-reload`，nginx 侧 `reload-watch.sh` 每 10s 轮询检测变化，执行 `nginx -s reload`
+- **无需 docker.sock**：两个容器共享 bind mount，信号文件是唯一通信方式
 
 ## 常用命令
 
 | 命令 | 说明 |
 |------|------|
-| `docker compose up -d` | 启动服务 |
+| `./scripts/init-certs.sh` | 首次初始化并启动全栈 |
+| `./scripts/cert-status.sh` | 查看证书到期时间 |
+| `./scripts/issue-cert.sh new-domain.com` | 新增域名并签发证书 |
+| `docker compose up -d` | 启动已有服务（不签发新证书） |
 | `docker compose logs -f acme-sh` | 查看 acme.sh 日志 |
 | `docker compose logs -f nginx` | 查看 nginx 日志 |
 | `docker compose restart nginx` | 重启 nginx |
-| `./scripts/cert-status.sh` | 查看证书到期时间 |
-| `./scripts/issue-cert.sh new-domain.com` | 新增域名并签发证书 |
+| `docker compose down` | 停止所有服务 |
 
 ## 新增域名
 
-1. 编辑 `.env`，在 `DOMAINS` 中追加：
+已运行后再添加新域名：
 
-    ```env
-    DOMAINS=example1.com;example2.com;new-domain.com
-    ```
+```bash
+# 签发新域名证书
+./scripts/issue-cert.sh new-domain.com
 
-2. 在 `conf.d/default.conf` 中添加对应的 server 块
+# 在 conf.d/ 中添加对应的 nginx server 块
+# nginx 会自动检测并热加载
+```
 
-3. 重启：
+如果只是想扩展现有泛域名证书的子域名，无需任何操作 — `*.domain.com` 已覆盖。
 
-    ```bash
-    docker compose up -d
-    ```
+## 常见问题
 
-## 续期机制
+### 证书签发失败
 
-acme-sh 容器以 daemon 模式运行，每天自动检查证书到期时间。距离到期不足 60 天时自动续签，续签成功后通过 `docker exec nginx nginx -s reload` 热加载 nginx，无需重启容器。
+检查 acme-sh 日志：
+
+```bash
+docker compose logs acme-sh
+```
+
+常见原因：
+- 阿里云 AccessKey 权限不足（需要 DNS 管理权限）
+- DNS 记录未在阿里云（域名不在阿里云解析）
+- Let's Encrypt 速率限制（同一域名一周最多 5 张新证书）
+
+### nginx 无法启动
+
+nginx 在证书就绪前会等待最多 5 分钟。确保先运行了 `./scripts/init-certs.sh`。
+
+### 查看证书详情
+
+```bash
+docker compose exec acme-sh acme.sh --list
+```
 
 ## License
 

@@ -17,6 +17,9 @@ set -a; source .env; set +a
 : "${DOMAINS:?❌ DOMAINS 环境变量未设置}"
 : "${CERT_EMAIL:?❌ CERT_EMAIL 环境变量未设置}"
 
+# ---- Step 0: 确保目录存在 ----
+mkdir -p ./acme.sh
+
 # ---- Step 1: 启动 acme-sh daemon ----
 echo "→ 启动 acme-sh daemon..."
 docker compose up -d acme-sh
